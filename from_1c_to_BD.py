@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from termolands_params import termolands
 from requests.auth import HTTPBasicAuth
 from dotenv import load_dotenv
+from dateutil.utils import today
 import os
 
 start = datetime.now()
@@ -24,7 +25,8 @@ auth = HTTPBasicAuth(login, password)
 
 
 clients = pd.DataFrame(db.query("select * from total_clients"))
-clients.columns = [i[0] for i in db.query("SELECT COLUMN_NAME  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = 'total_clients'")]
+clients_text = "SELECT COLUMN_NAME  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = 'total_clients'"
+clients.columns = [i[0] for i in db.query(clients_text)]
 
 
 new_clients = pd.DataFrame()
@@ -69,7 +71,9 @@ def prepare_your_ass(df):
     clnts = \
         pd.pivot_table(df, index=['client_id', 'surname', 'name', 'patronymic', 'birthday', 'email', 'sex', 'phone'],
                        values='visit_dt_date', aggfunc='min').reset_index()
-
+    print(len(df))
+    df = df[(df.entry < today()) & (df['exit'] < today() + timedelta(hours=2))]
+    print(len(df))
     return df, clnts
 
 
@@ -79,7 +83,8 @@ visits_df = pd.DataFrame()
 for name, parameters in termolands.items():
     print(name)
     termolands[name]['api'] = API_termolad(name, parameters['url'], parameters['clubid'], parameters['apikey'])
-    last_visits_dt = db.query(f"select date(MAX(dt_entry)) from total_visits tv where id_club = '{parameters['clubid']}'")[0][0]
+    last_day_text = f"select date(MAX(dt_entry)) from total_visits tv where id_club = '{parameters['clubid']}'"
+    last_visits_dt = db.query(last_day_text)[0][0]
     if last_visits_dt == datetime.now().date() - timedelta(days=1):
         continue
     elif last_visits_dt == None:
@@ -94,16 +99,23 @@ for name, parameters in termolands.items():
 
     opa = prepare_your_ass(visit)
     new_clients = pd.concat([new_clients, opa[1]])
-    visits_df = pd.concat([visits_df, opa[0]])
+    v = opa[0][opa[0].entry > datetime.strftime(last_visits_dt, format='%d.%m.%Y %H:%M:%S')]
+    visits_df = pd.concat([visits_df, v])
     print(datetime.now() - start)
 
+
 for_definition_new = ['client_id', 'surname', 'phone']
+
 new_clients = new_clients.drop_duplicates()
-new_clients = new_clients[for_definition_new].merge(clients[['client_id', 'surname', 'phone', 'name']],
+for_merge = new_clients[for_definition_new].merge(clients[['client_id', 'surname', 'phone', 'name']],
                                             on=for_definition_new, how='left')
-
-new_clients = new_clients[new_clients['name'].isna()].drop(columns=['name'])
-
+list_new_clients = for_merge.client_id[for_merge['name'].isna()]
+new_clients = new_clients[new_clients.client_id.isin(list_new_clients)]
+new_clients = new_clients.rename(columns={'clientd_id': 'id_client',
+                                      'patronymic': 'middle_name',
+                                      'birthday': 'dt_birth',
+                                      'visit_dt_date': 'first_contact'})
+new_clients['phone'] = new_clients.phone.astype(str)
 
 # Формируем SQL-запрос для клиентов
 cols = ', '.join(f'`{col}`' for col in new_clients.columns)
@@ -115,10 +127,15 @@ db.query(sql_string, 'insert', cli_for_db)
 
 
 # Формируем SQL-запрос для визитов
+visits_df = visits_df.rename(columns={'club_id': 'id_club',
+                                      'client_id': 'id_client',
+                                      'exit': 'dt_exit',
+                                      'entry': 'dt_entry'})
+visits_df = visits_df[['id_club', 'id_client', 'dt_exit', 'dt_entry',
+                       'duration', 'nomenklature_name', 'nomenklature_id']]
 cols = ', '.join(f'`{col}`' for col in visits_df.columns)
 placeholders = ', '.join(['%s'] * len(visits_df.columns))
 sql_string = f"INSERT INTO total_visits ({cols}) VALUES ({placeholders})"
 # Преобразуем DataFrame в список кортежей
 vis_for_db = visits_df[visits_df.columns].values.tolist()
 db.query(sql_string, 'insert', vis_for_db)
-a=0

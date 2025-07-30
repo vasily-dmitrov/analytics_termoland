@@ -77,7 +77,10 @@ class MariaDBOverSSH:
         try:
             with connection.cursor() as cursor:
                 if type == 'insert':
+                    print(type, sql)
                     cursor.executemany(sql, data)
+                    connection.commit()
+                    print('done')
                 elif type == 'execute':
                     cursor.execute(sql)
                     result = cursor.fetchall()
