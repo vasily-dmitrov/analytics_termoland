@@ -99,7 +99,7 @@ for name, parameters in termolands.items():
 
     opa = prepare_your_ass(visit)
     new_clients = pd.concat([new_clients, opa[1]])
-    v = opa[0][opa[0].entry > datetime.strftime(last_visits_dt, format='%d.%m.%Y %H:%M:%S')]
+    v = opa[0][opa[0].entry >= datetime.strftime(last_visits_dt, format='%d.%m.%Y %H:%M:%S')]
     visits_df = pd.concat([visits_df, v])
     print(datetime.now() - start)
 
@@ -133,6 +133,7 @@ visits_df = visits_df.rename(columns={'club_id': 'id_club',
                                       'entry': 'dt_entry'})
 visits_df = visits_df[['id_club', 'id_client', 'dt_exit', 'dt_entry',
                        'duration', 'nomenklature_name', 'nomenklature_id']]
+visits_df = visits_df[visits_df.dt_entry.notna()]
 cols = ', '.join(f'`{col}`' for col in visits_df.columns)
 placeholders = ', '.join(['%s'] * len(visits_df.columns))
 sql_string = f"INSERT INTO total_visits ({cols}) VALUES ({placeholders})"

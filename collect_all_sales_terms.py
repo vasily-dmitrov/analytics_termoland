@@ -91,7 +91,10 @@ def get_sales(term, params, historical=False):
                        'total_piece': row['products'][prod]['total']}]
 
             products_for_refund = pd.concat([products_for_refund, pd.DataFrame(string)])
-    refund = refund.merge(products_for_refund, on=['refund_id', 'sale_id', 'club_id'])
+    try:
+        refund = refund.merge(products_for_refund, on=['refund_id', 'sale_id', 'club_id'])
+    except:
+        print('error', refund.head(2))
 
     return {'products': products_term,
             'sales': sales_term,
